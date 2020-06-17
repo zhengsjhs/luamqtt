@@ -135,7 +135,7 @@ end
 --- Run ioloop until at least one client are in ioloop
 function ioloop_mt:run_until_clients()
 	self.running = true
-	while next(self.clients) do
+	while next(self.clients) and not ngx.worker.exiting() do
 		self:iteration()
 	end
 	self.running = false

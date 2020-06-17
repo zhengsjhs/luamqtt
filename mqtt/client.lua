@@ -52,7 +52,9 @@ local parse_packet5 = protocol5.parse_packet
 
 local ioloop = require("mqtt.ioloop")
 local ioloop_get = ioloop.get
-
+local semaphore = require('ngx.semaphore')
+local queue = require('mqtt.queue')
+local cjson = require('cjson.safe')
 -------
 
 -- pseudo-random generator initialized flag
@@ -231,7 +233,8 @@ function client_mt:__init(args)
 		self._make_packet = make_packet5
 		self._parse_packet = parse_packet5
 	end
-
+	self.pubqueue = queue.new()
+	self.pubsema = semaphore.new()
 	-- automatically add client to default ioloop, if it's available and running, then start connecting
 	local loop = ioloop_get(false)
 	if loop and loop.running then
@@ -484,7 +487,34 @@ function client_mt:publish(args)
 	-- returns assigned packet id
 	return packet_id or true
 end
-
+function client_mt:publish_async(args)
+	local conn = self.connection
+	if not conn then
+		return false, "network connection is not opened"
+	end
+	self.pubqueue:offer(args)
+	self.pubsema:post(1)
+	return true
+end
+function client_mt:poll_pubmsg(seconds)
+	local conn = self.connection
+	if not conn then
+		return false, nil
+	end
+	local sema = self.pubsema
+	if not sema then
+		return true, nil
+	end
+	local ok, err = sema:wait(seconds)
+    if ok then
+        msg = self.pubqueue:poll()
+        trace('poll pubmsg:', cjson.encode(msg))
+        return true, msg
+    else
+        --trace('poll pubmsg:', err)
+        return true, nil
+    end
+end
 --- Acknowledge given received message
 -- @tparam packet_mt msg				PUBLISH message to acknowledge
 -- @tparam[opt=0] number rc				The reason code field of PUBACK packet in MQTT v5.0 protocol
@@ -1093,6 +1123,11 @@ end
 
 -- Fill given connection table with host and port according given args
 function client_mt._parse_uri(args, conn)
+	local scheme, host, port, path = str_match(args.uri, "(ws[s]?)//([^%s]+):(%d+)(.*)")
+	if scheme then
+		conn.uri = args.uri -- websocket uri
+		return
+	end
 	local host, port = str_match(args.uri, "^([^%s]+):(%d+)$")
 	if not host then
 		-- trying pattern without port
