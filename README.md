@@ -94,7 +94,7 @@ Here is a short version of [`examples/simple.lua`](examples/simple.lua):
 local mqtt = require("mqtt")
 
 -- create MQTT client, flespi tokens info: https://flespi.com/kb/tokens-access-keys-to-flespi-platform
-local client = mqtt.client{ uri = "mqtt.flespi.io", username = os.getenv("FLESPI_TOKEN"), clean = true }
+local client = mqtt.client{ uri = "ws://127.0.0.1:8083/mqtt", id = "clientId-123", username = "luamqttuser", password = "luamqttpass", connector = require("mqtt.ngxwebsocket"), clean = true }
 
 -- assign MQTT client event handlers
 client:on{
